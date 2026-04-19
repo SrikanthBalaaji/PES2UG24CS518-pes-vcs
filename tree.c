@@ -130,10 +130,44 @@ int tree_serialize(const Tree *tree, void **data_out, size_t *len_out) {
 //
 // Returns 0 on success, -1 on error.
 int tree_from_index(ObjectID *id_out) {
-    // Basic validation
     if (!id_out) return -1;
 
-    // Tree building logic will be added in next commits
+    // Load index
+    Index index;
+    if (index_load(&index) != 0) return -1;
 
-    return -1;
+    // Create tree
+    Tree tree;
+    tree.count = 0;
+
+    // Build flat tree (no directories yet)
+    for (int i = 0; i < index.count; i++) {
+        const IndexEntry *e = &index.entries[i];
+
+        TreeEntry *t = &tree.entries[tree.count++];
+
+        // Copy name (full path for now)
+        snprintf(t->name, sizeof(t->name), "%s", e->path);
+
+        // Set mode
+        t->mode = e->mode;
+
+        // Copy hash
+        t->hash = e->id;
+    }
+
+    // Serialize tree
+    void *data;
+    size_t len;
+
+    if (tree_serialize(&tree, &data, &len) != 0) return -1;
+
+    // Store tree object
+    if (object_write(OBJ_TREE, data, len, id_out) != 0) {
+        free(data);
+        return -1;
+    }
+
+    free(data);
+    return 0;
 }
