@@ -103,8 +103,23 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
     
     char header[100];
     int header_len = snprintf(header, sizeof(header), "%s %zu", type_str, len) + 1;
+    
+    // Combine header + data
+    size_t total_len = header_len + len;
+    char *full_obj = malloc(total_len);
+    if (!full_obj) return -1;
+    memcpy(full_obj, header, header_len);
+    memcpy(full_obj + header_len, data, len);
+
+    // Compute hash
+    compute_hash(full_obj, total_len, id_out);
+
+    // Deduplication check
+    if (object_exists(id_out)) {
+        free(full_obj);
+        return 0;
+    }
     // TODO: Implement
-    (void)type; (void)data; (void)len; (void)id_out;
     return -1;
 }
 
