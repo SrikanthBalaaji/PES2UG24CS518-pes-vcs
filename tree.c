@@ -141,21 +141,47 @@ int tree_from_index(ObjectID *id_out) {
     tree.count = 0;
 
     // Build flat tree (no directories yet)
+// Build tree with basic directory handling
     for (int i = 0; i < index.count; i++) {
-        const IndexEntry *e = &index.entries[i];
+    const IndexEntry *e = &index.entries[i];
 
+    char *slash = strchr(e->path, '/');
+
+    if (!slash) {
+        // Normal file
         TreeEntry *t = &tree.entries[tree.count++];
 
-        // Copy name (full path for now)
         snprintf(t->name, sizeof(t->name), "%s", e->path);
-
-        // Set mode
         t->mode = e->mode;
-
-        // Copy hash
         t->hash = e->id;
-    }
 
+    } else {
+        // Directory handling
+        size_t dir_len = slash - e->path;
+
+        char dir_name[256];
+        snprintf(dir_name, sizeof(dir_name), "%.*s", (int)dir_len, e->path);
+
+        // Check if directory already added
+        int exists = 0;
+        for (int j = 0; j < tree.count; j++) {
+            if (strcmp(tree.entries[j].name, dir_name) == 0) {
+                exists = 1;
+                break;
+            }
+        }
+
+        if (!exists) {
+            TreeEntry *t = &tree.entries[tree.count++];
+
+            snprintf(t->name, sizeof(t->name), "%s", dir_name);
+            t->mode = MODE_DIR;
+
+            // Temporary hash (fixed next commit)
+            t->hash = e->id;
+        }
+    }
+}
     // Serialize tree
     void *data;
     size_t len;
