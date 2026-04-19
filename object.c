@@ -101,6 +101,7 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
     else if (type == OBJ_COMMIT) strcpy(type_str, "commit");
     else return -1;
     
+    // Create header
     char header[100];
     int header_len = snprintf(header, sizeof(header), "%s %zu", type_str, len) + 1;
     
@@ -108,6 +109,7 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
     size_t total_len = header_len + len;
     char *full_obj = malloc(total_len);
     if (!full_obj) return -1;
+
     memcpy(full_obj, header, header_len);
     memcpy(full_obj + header_len, data, len);
 
@@ -119,8 +121,57 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
         free(full_obj);
         return 0;
     }
-    // TODO: Implement
-    return -1;
+
+    // Get final object path
+    char path[512];
+    object_path(id_out, path, sizeof(path));
+
+    // Extract directory path
+    char dir[512];
+    strncpy(dir, path, sizeof(dir));
+    char *slash = strrchr(dir, '/');
+    if (slash) *slash = '\0';
+
+    // Create shard directory
+    mkdir(dir, 0755);
+
+    // Create temp file
+    char temp_path[600];
+    snprintf(temp_path, sizeof(temp_path), "%s/tmpXXXXXX", dir);
+
+    int fd = mkstemp(temp_path);
+    if (fd < 0) {
+        free(full_obj);
+        return -1;
+    }
+
+    // Write data
+    if (write(fd, full_obj, total_len) != total_len) {
+        close(fd);
+        free(full_obj);
+        return -1;
+    }
+
+    // Ensure file is written
+    fsync(fd);
+    close(fd);
+
+    // Atomic rename
+    if (rename(temp_path, path) != 0) {
+        free(full_obj);
+        return -1;
+    }
+
+    // fsync directory (important for atomicity)
+    int dir_fd = open(dir, O_DIRECTORY);
+    if (dir_fd >= 0) {
+        fsync(dir_fd);
+        close(dir_fd);
+    }
+
+    // Cleanup
+    free(full_obj);
+    return 0;
 }
 
 // Read an object from the store.
