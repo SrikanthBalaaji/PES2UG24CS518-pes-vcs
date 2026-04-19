@@ -186,11 +186,57 @@ int index_load(Index *idx) {
 //   - rename                           : atomically moving the temp file over the old index
 //
 // Returns 0 on success, -1 on error.
+// Helper function for sorting
+static int compare_paths(const void *a, const void *b) {
+    const IndexEntry *ea = (const IndexEntry *)a;
+    const IndexEntry *eb = (const IndexEntry *)b;
+    return strcmp(ea->path, eb->path);
+}
+
 int index_save(const Index *index) {
-    // TODO: Implement atomic index saving
-    // (See Lab Appendix for logical steps)
-    (void)index;
-    return -1;
+    if (!index) return -1;
+
+    // Make a copy to sort
+    Index temp = *index;
+
+    // Sort entries by path
+    qsort(temp.entries, temp.count, sizeof(IndexEntry), compare_paths);
+
+    // Temporary file path
+    char temp_path[512];
+    snprintf(temp_path, sizeof(temp_path), "%s.tmp", INDEX_FILE);
+
+    FILE *fp = fopen(temp_path, "w");
+    if (!fp) return -1;
+
+    // Write entries
+    for (int i = 0; i < temp.count; i++) {
+        char hash_hex[HASH_HEX_SIZE + 1];
+        hash_to_hex(&temp.entries[i].hash, hash_hex);
+
+        fprintf(fp, "%o %s %lu %u %s\n",
+                temp.entries[i].mode,
+                hash_hex,
+                temp.entries[i].mtime_sec,
+                temp.entries[i].size,
+                temp.entries[i].path);
+    }
+
+    // Flush buffers
+    fflush(fp);
+
+    // Force write to disk
+    int fd = fileno(fp);
+    fsync(fd);
+
+    fclose(fp);
+
+    // Atomic rename
+    if (rename(temp_path, INDEX_FILE) != 0) {
+        return -1;
+    }
+
+    return 0;
 }
 
 // Stage a file for the next commit.
