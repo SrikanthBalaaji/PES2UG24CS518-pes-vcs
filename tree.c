@@ -10,6 +10,11 @@
 //   "100644 hello.txt\0" followed by 32 raw bytes of SHA-256
 
 #include "tree.h"
+#include "index.h"
+#include "pes.h"
+
+int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out);
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -129,71 +134,86 @@ int tree_serialize(const Tree *tree, void **data_out, size_t *len_out) {
 //   - object_write    : save that binary buffer to the store as OBJ_TREE
 //
 // Returns 0 on success, -1 on error.
-int tree_from_index(ObjectID *id_out) {
-    if (!id_out) return -1;
+// ------------------ HELPER FUNCTION ------------------
 
-    // Load index
-    Index index;
-    if (index_load(&index) != 0) return -1;
-
-    // Create tree
+static int build_tree(IndexEntry *entries, int count, const char *prefix, ObjectID *out_id) {
     Tree tree;
     tree.count = 0;
 
-    // Build flat tree (no directories yet)
-// Build tree with basic directory handling
-    for (int i = 0; i < index.count; i++) {
-    const IndexEntry *e = &index.entries[i];
+    for (int i = 0; i < count; i++) {
+        const IndexEntry *e = &entries[i];
 
-    char *slash = strchr(e->path, '/');
+        if (prefix && strncmp(e->path, prefix, strlen(prefix)) != 0)
+            continue;
 
-    if (!slash) {
-        // Normal file
-        TreeEntry *t = &tree.entries[tree.count++];
+        const char *rel_path = prefix ? e->path + strlen(prefix) : e->path;
 
-        snprintf(t->name, sizeof(t->name), "%s", e->path);
-        t->mode = e->mode;
-        t->hash = e->id;
+        const char *slash = strchr(rel_path, '/');
 
-    } else {
-        // Directory handling
-        size_t dir_len = slash - e->path;
-
-        char dir_name[256];
-        snprintf(dir_name, sizeof(dir_name), "%.*s", (int)dir_len, e->path);
-
-        // Check if directory already added
-        int exists = 0;
-        for (int j = 0; j < tree.count; j++) {
-            if (strcmp(tree.entries[j].name, dir_name) == 0) {
-                exists = 1;
-                break;
-            }
-        }
-
-        if (!exists) {
+        if (!slash) {
             TreeEntry *t = &tree.entries[tree.count++];
 
-            snprintf(t->name, sizeof(t->name), "%s", dir_name);
-            t->mode = MODE_DIR;
+            snprintf(t->name, sizeof(t->name), "%s", rel_path);
+            t->mode = e->mode;
+            t->hash = e->hash;   // ✅ FIXED
+        } else {
+            size_t dir_len = slash - rel_path;
 
-            // Temporary hash (fixed next commit)
-            t->hash = e->id;
+            char dir_name[256];
+            snprintf(dir_name, sizeof(dir_name), "%.*s", (int)dir_len, rel_path);
+
+            int exists = 0;
+            for (int j = 0; j < tree.count; j++) {
+                if (strcmp(tree.entries[j].name, dir_name) == 0) {
+                    exists = 1;
+                    break;
+                }
+            }
+
+            if (!exists) {
+                char new_prefix[512];
+
+                if (prefix)
+                    snprintf(new_prefix, sizeof(new_prefix), "%s%s/", prefix, dir_name);
+                else
+                    snprintf(new_prefix, sizeof(new_prefix), "%s/", dir_name);
+
+                ObjectID sub_id;
+
+                if (build_tree(entries, count, new_prefix, &sub_id) != 0)
+                    return -1;
+
+                TreeEntry *t = &tree.entries[tree.count++];
+
+                snprintf(t->name, sizeof(t->name), "%s", dir_name);
+                t->mode = MODE_DIR;
+                t->hash = sub_id;
+            }
         }
     }
-}
-    // Serialize tree
+
     void *data;
     size_t len;
 
-    if (tree_serialize(&tree, &data, &len) != 0) return -1;
+    if (tree_serialize(&tree, &data, &len) != 0)
+        return -1;
 
-    // Store tree object
-    if (object_write(OBJ_TREE, data, len, id_out) != 0) {
+    if (object_write(OBJ_TREE, data, len, out_id) != 0) {
         free(data);
         return -1;
     }
 
     free(data);
     return 0;
+}
+
+// ------------------ MAIN FUNCTION ------------------
+
+int tree_from_index(ObjectID *id_out) {
+    if (!id_out) return -1;
+
+    Index index;
+    if (index_load(&index) != 0) return -1;
+
+    return build_tree(index.entries, index.count, NULL, id_out);
 }
