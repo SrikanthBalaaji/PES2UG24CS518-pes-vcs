@@ -137,18 +137,41 @@ int index_status(const Index *index) {
 int index_load(Index *idx) {
     if (!idx) return -1;
 
-    // Initialize empty index
     idx->count = 0;
 
-    // Try opening index file
     FILE *fp = fopen(INDEX_FILE, "r");
 
-    // If file doesn't exist → NOT an error
+    // If file doesn't exist → empty index
     if (!fp) {
         return 0;
     }
 
-    // For now, we are not parsing (next commit)
+    char line[1024];
+
+    while (fgets(line, sizeof(line), fp)) {
+        IndexEntry entry;
+
+        char hash_hex[HASH_HEX_SIZE + 1];
+
+        // Parse line
+        if (sscanf(line, "%o %64s %ld %u %s",
+                   &entry.mode,
+                   hash_hex,
+                   &entry.mtime_sec,
+                   &entry.size,
+                   entry.path) != 5) {
+            continue; // skip invalid lines
+        }
+
+        // Convert hex → binary hash
+        if (hex_to_hash(hash_hex, &entry.hash) != 0) {
+            continue;
+        }
+
+        // Add entry to index
+        idx->entries[idx->count++] = entry;
+    }
+
     fclose(fp);
     return 0;
 }
