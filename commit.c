@@ -238,5 +238,11 @@ int commit_create(const char *message, ObjectID *commit_id_out) {
     }
     free(data);
 
-    return -1; // HEAD not yet updated
+    // Atomically update HEAD to point to new commit
+    if (head_update(commit_id_out) != 0) {
+        fprintf(stderr, "error: failed to update HEAD\n");
+        return -1;
+    }
+
+    return 0;
 }
