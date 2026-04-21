@@ -222,5 +222,21 @@ int commit_create(const char *message, ObjectID *commit_id_out) {
     // Fill message
     snprintf(commit.message, sizeof(commit.message), "%s", message);
 
-    return -1; // not yet fully implemented
+    // Serialize commit struct → raw bytes
+    void *data;
+    size_t len;
+    if (commit_serialize(&commit, &data, &len) != 0) {
+        fprintf(stderr, "error: failed to serialize commit\n");
+        return -1;
+    }
+
+    // Write commit object to object store
+    if (object_write(OBJ_COMMIT, data, len, commit_id_out) != 0) {
+        free(data);
+        fprintf(stderr, "error: failed to write commit object\n");
+        return -1;
+    }
+    free(data);
+
+    return -1; // HEAD not yet updated
 }
