@@ -16,6 +16,7 @@
 // TODO functions:     index_load, index_save, index_add
 
 #include "index.h"
+#include "pes.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -154,7 +155,7 @@ int index_load(Index *idx) {
         char hash_hex[HASH_HEX_SIZE + 1];
 
         // Parse line
-        if (sscanf(line, "%o %64s %ld %u %s",
+        if (sscanf(line, "%o %64s %lu %u %s",
                    &entry.mode,
                    hash_hex,
                    &entry.mtime_sec,
@@ -249,8 +250,68 @@ int index_save(const Index *index) {
 //
 // Returns 0 on success, -1 on error.
 int index_add(Index *index, const char *path) {
-    // TODO: Implement file staging
-    // (See Lab Appendix for logical steps)
-    (void)index; (void)path;
-    return -1;
+    if (!index || !path) return -1;
+
+    // Open file
+    FILE *fp = fopen(path, "rb");
+    if (!fp) return -1;
+
+    // Get file size
+    fseek(fp, 0, SEEK_END);
+    size_t size = ftell(fp);
+    rewind(fp);
+
+    // Read file data
+    void *data = malloc(size);
+    if (!data) {
+        fclose(fp);
+        return -1;
+    }
+
+    if (fread(data, 1, size, fp) != size) {
+        free(data);
+        fclose(fp);
+        return -1;
+    }
+
+    fclose(fp);
+
+    // Write blob object
+    ObjectID id;
+    if (object_write(OBJ_BLOB, data, size, &id) != 0) {
+        free(data);
+        return -1;
+    }
+
+    free(data);
+
+    // Get file metadata
+    struct stat st;
+    if (stat(path, &st) != 0) {
+        return -1;
+    }
+
+    // Check if entry already exists
+    IndexEntry *entry = index_find(index, path);
+
+    if (!entry) {
+        // Add new entry
+        if (index->count >= MAX_INDEX_ENTRIES) return -1;
+        entry = &index->entries[index->count++];
+    }
+
+    // Fill entry fields
+    entry->mode = st.st_mode;
+    entry->mtime_sec = st.st_mtime;
+    entry->size = st.st_size;
+    entry->hash = id;
+
+    snprintf(entry->path, sizeof(entry->path), "%s", path);
+
+    // Save index
+    if (index_save(index) != 0) {
+        return -1;
+    }
+
+    return 0;
 }

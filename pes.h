@@ -43,6 +43,8 @@ void hash_to_hex(const ObjectID *id, char *hex_out);
 // Convert a 64-character hex string to a binary hash.
 // Returns 0 on success, -1 if hex contains invalid characters.
 int hex_to_hash(const char *hex, ObjectID *id_out);
+// Write object to object store
+int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out);
 
 // ─── Author Configuration ───────────────────────────────────────────────────
 // PES-VCS reads the author name from the environment variable PES_AUTHOR.
