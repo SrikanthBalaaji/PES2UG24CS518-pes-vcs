@@ -214,5 +214,13 @@ int commit_create(const char *message, ObjectID *commit_id_out) {
         commit.has_parent = 0;
     }
 
+    // Fill author and timestamp
+    const char *author = pes_author();
+    snprintf(commit.author, sizeof(commit.author), "%s", author);
+    commit.timestamp = (uint64_t)time(NULL);
+
+    // Fill message
+    snprintf(commit.message, sizeof(commit.message), "%s", message);
+
     return -1; // not yet fully implemented
 }
