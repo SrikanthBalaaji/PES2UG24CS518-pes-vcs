@@ -199,5 +199,20 @@ int commit_create(const char *message, ObjectID *commit_id_out) {
     Commit commit;
     memset(&commit, 0, sizeof(commit));
 
-    return -1; // not yet implemented
+    // Build tree from index
+    if (tree_from_index(&commit.tree) != 0) {
+        fprintf(stderr, "error: failed to build tree from index\n");
+        return -1;
+    }
+
+    // Read HEAD as parent (fails silently for first commit)
+    ObjectID parent_id;
+    if (head_read(&parent_id) == 0) {
+        commit.parent = parent_id;
+        commit.has_parent = 1;
+    } else {
+        commit.has_parent = 0;
+    }
+
+    return -1; // not yet fully implemented
 }
