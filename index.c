@@ -169,7 +169,11 @@ int index_load(Index *idx) {
             continue;
         }
 
-        // Add entry to index
+        // Add entry to index, guarding against overflow
+        if (idx->count >= MAX_INDEX_ENTRIES) {
+            fprintf(stderr, "warning: index full, skipping remaining entries\n");
+            break;
+        }
         idx->entries[idx->count++] = entry;
     }
 
